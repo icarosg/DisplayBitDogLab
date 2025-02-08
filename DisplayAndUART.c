@@ -33,7 +33,7 @@ void clear_leds(void);
 void write_leds(void);
 void exibirNumero(int countBotao);
 static void gpio_irq_handler(uint gpio, uint32_t events);
-void leituraUSBNEW(void);
+void atualizarDisplay(int, int);
 
 // variáveis globais
 int countBotao = 0;
