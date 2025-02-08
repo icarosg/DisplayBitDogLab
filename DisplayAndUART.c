@@ -264,13 +264,6 @@ static void gpio_irq_handler(uint gpio, uint32_t events)
   }
 }
 
-// manipulador de interrupção para o timer
-bool repeating_timer_callback(struct repeating_timer *t)
-{
-  gpio_put(LED_R, !gpio_get(LED_R)); // alterna o estado do LED
-  return true;                       // continua executando a cada intervalo definido
-}
-
 void leituraUSB()
 {
   if (stdio_usb_connected())
@@ -372,11 +365,6 @@ int main()
 {
   stdio_init_all();
   init_hardware();
-  // exibirNumero(countBotao);
-
-  // timer que dispare a cada 100ms
-  struct repeating_timer timer;
-  add_repeating_timer_ms(-100, repeating_timer_callback, NULL, &timer);
 
   // loop principal (as ações dos botões são tratadas via IRQ)
   while (true)
