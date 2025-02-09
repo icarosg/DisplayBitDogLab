@@ -33,12 +33,11 @@ static void gpio_irq_handler(uint gpio, uint32_t events);
 void atualizarDisplay(void);
 
 // variáveis globais
-int countBotao = 0;
-static volatile uint32_t last_time = 0; // armazena o tempo do último evento (em microssegundos)
-ssd1306_t ssd;                          // inicializa a estrutura do display
-bool cor = true;
-char c;
+ssd1306_t ssd; // inicializa a estrutura do display
+char received_char = '\0';
 char estadoLED[15];
+volatile uint32_t last_interrupt_A_time = 0;
+volatile uint32_t last_interrupt_B_time = 0;
 
 // se for 1, deve acender
 int numerosMatriz[10][25] = {
@@ -121,13 +120,11 @@ void init_hardware(void)
   gpio_init(5);
   gpio_set_dir(5, GPIO_IN);
   gpio_pull_up(5);
-  gpio_set_irq_enabled_with_callback(5, GPIO_IRQ_EDGE_FALL, true, gpio_irq_handler);
 
   // configura botão B na GPIO 6 com pull-up e interrupção na borda de descida
   gpio_init(6);
   gpio_set_dir(6, GPIO_IN);
   gpio_pull_up(6);
-  gpio_set_irq_enabled_with_callback(6, GPIO_IRQ_EDGE_FALL, true, gpio_irq_handler);
 
   gpio_init(LED_R);              // inicializa LED_R como saída
   gpio_set_dir(LED_R, GPIO_OUT); // configura LED_R como saída
@@ -222,111 +219,77 @@ void exibirNumero(int countBotao)
  * Função de interrupção para tratar os botões A (GPIO 5) e B (GPIO 6)
  * Implementa debouncing software usando a constante DEBOUNCE_DELAY_MS.
  */
-static void gpio_irq_handler(uint gpio, uint32_t events)
+void gpio_irq_handler(uint gpio, uint32_t events)
 {
-  uint32_t current_time = to_us_since_boot(get_absolute_time());
-  if (current_time - last_time < (DEBOUNCE_DELAY_MS * 1000))
-    return;
-
-  last_time = current_time;
+  uint32_t current_time = to_ms_since_boot(get_absolute_time());
 
   if (gpio == 5)
-  {                                    // botão A:
-    gpio_put(LED_B, 0);                // desliga o led azul
-    gpio_put(LED_G, !gpio_get(LED_G)); // alterna o estado do LED verde
-
-    strcpy(estadoLED, gpio_get(LED_G) ? "LED VERDE ON" : "LED VERDE OFF");
-    printf("\nEstado do LED verde alternado\n%s \n", gpio_get(LED_G) ? "LED verde on" : "LED verde off");
-
-    atualizarDisplay();
-  }
-
-  if (gpio == 6)
-  {                                    // botão B:
-    gpio_put(LED_G, 0);                // desliga o led verde
-    gpio_put(LED_B, !gpio_get(LED_B)); // alterna o estado do LED azul
-
-    strcpy(estadoLED, gpio_get(LED_B) ? "LED AZUL ON" : "LED AZUL OFF");
-    printf("\nEstado do LED azul alternado\n%s \n", gpio_get(LED_B) ? "LED azul on" : "LED azul off");
-
-    atualizarDisplay();
-  }
-}
-
-void leituraUSB()
-{
-  if (stdio_usb_connected())
-  { // certifica-se de que o USB está conectado
-
-    if (scanf(" %c", &c) == 1)
+  {
+    if (current_time - last_interrupt_A_time > DEBOUNCE_DELAY_MS)
     {
-      printf("Recebido: '%c'\n", c);
+      last_interrupt_A_time = current_time;
 
-      if (c >= '0' && c <= '9')
-      {
-        int n = c - '0'; // converte o caracter numérico para inteiro
-        cor = !cor;
+      gpio_put(LED_B, 0);                // desliga o led azul
+      gpio_put(LED_G, !gpio_get(LED_G)); // alterna o estado do LED verde
 
-        ssd1306_fill(&ssd, !cor);                    // limpa o display
-        ssd1306_draw_string(&ssd, "NUMERO", 15, 48); // desenha uma string
-        ssd1306_draw_string(&ssd, &c, 73, 48);       // desenha uma string, o número digitado pelo usuário
-
-        exibirNumero(n); // exibe o número na matriz de LEDs
-      }
-      else
-      {
-        cor = !cor;
-
-        ssd1306_fill(&ssd, !cor);                       // limpa o display
-        ssd1306_draw_string(&ssd, "CARACTER ", 15, 48); // desenha uma string
-        ssd1306_draw_string(&ssd, &c, 89, 48);          // digita o caractere digitado pelo usuário
-      }
+      strcpy(estadoLED, gpio_get(LED_G) ? "LED VERDE ON" : "LED VERDE OFF");
+      printf("\nEstado do LED verde alternado\n%s \n", gpio_get(LED_G) ? "LED verde on" : "LED verde off");
     }
-
-    // atualiza o conteúdo do display com animações
-    ssd1306_rect(&ssd, 3, 3, 122, 58, cor, !cor);       // desenha um retângulo
-    ssd1306_draw_string(&ssd, "CEPEDI   TIC37", 8, 10); // desenha uma string
-    ssd1306_send_data(&ssd);                            // atualiza o display
   }
+  else if (gpio == 6)
+  {
+    if (current_time - last_interrupt_B_time > DEBOUNCE_DELAY_MS)
+    {
+      last_interrupt_B_time = current_time;
+      gpio_put(LED_G, 0);                // desliga o led verde
+      gpio_put(LED_B, !gpio_get(LED_B)); // alterna o estado do LED azul
 
-  sleep_ms(40);
-  atualizarDisplay();
+      strcpy(estadoLED, gpio_get(LED_B) ? "LED AZUL ON" : "LED AZUL OFF");
+      printf("\nEstado do LED azul alternado\n%s \n", gpio_get(LED_B) ? "LED azul on" : "LED azul off");
+    }
+  }
 }
 
 void atualizarDisplay()
 {
-  if (stdio_usb_connected())
-  {                           // certifica-se de que o USB está conectado
+  ssd1306_fill(&ssd, false); // Limpa o display
 
-    if (c >= '0' && c <= '9')
+  if (received_char)
+  {
+
+    if (received_char >= '0' && received_char <= '9')
     {
-      int n = c - '0'; // converte o caracter numérico para inteiro
-      cor = !cor;
-      ssd1306_fill(&ssd, !cor); // limpa o display
+      int n = received_char - '0'; // Converte o caractere numérico para inteiro
 
-      ssd1306_draw_string(&ssd, "NUMERO", 15, 48); // desenha uma string
-      ssd1306_draw_string(&ssd, &c, 65, 48);       // desenha uma string, o número digitado pelo usuário
+      ssd1306_draw_string(&ssd, "NUMERO", 15, 48);
+      ssd1306_draw_string(&ssd, &received_char, 73, 48);
 
-      exibirNumero(n); // exibe o número na matriz de LEDs
+      exibirNumero(n); // Exibe o número na matriz de LEDs
     }
     else
     {
-      cor = !cor;
-      ssd1306_fill(&ssd, !cor); // limpa o display
-
-      ssd1306_draw_string(&ssd, "CARACTER ", 15, 48); // desenha uma string
-      ssd1306_draw_string(&ssd, &c, 89, 48);          // digita o caractere digitado pelo usuário
+      ssd1306_draw_string(&ssd, "CARACTER ", 15, 48);
+      ssd1306_draw_string(&ssd, &received_char, 89, 48);
     }
   }
 
-  if (estadoLED)
-    ssd1306_draw_string(&ssd, estadoLED, 20, 30); // desenha uma string referente ao estado do led
+  ssd1306_draw_string(&ssd, estadoLED, 20, 30); // desenha uma string referente ao estado do led
 
-  ssd1306_rect(&ssd, 3, 3, 122, 58, cor, !cor);       // desenha um retângulo
+  // ssd1306_rect(&ssd, 3, 3, 122, 58, cor, !cor);       // desenha um retângulo
   ssd1306_draw_string(&ssd, "CEPEDI   TIC37", 8, 10); // desenha uma string
   ssd1306_send_data(&ssd);                            // atualiza o display
 
   sleep_ms(40);
+}
+
+char read_serial_character()
+{
+  if (stdio_usb_connected())
+  {
+    int c = getchar_timeout_us(0);
+    return (c == PICO_ERROR_TIMEOUT) ? '\0' : (char)c;
+  }
+  return '\0';
 }
 
 int main()
@@ -334,10 +297,20 @@ int main()
   stdio_init_all();
   init_hardware();
 
+  gpio_set_irq_enabled_with_callback(5, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
+  gpio_set_irq_enabled(6, GPIO_IRQ_EDGE_FALL, true);
+
   // loop principal (as ações dos botões são tratadas via IRQ)
   while (true)
   {
-    leituraUSB();
-    sleep_ms(10); // pequeno atraso
+    char new_char = read_serial_character();
+    if (new_char != '\0')
+    {
+      received_char = new_char;
+      printf("Caractere: %c\n", received_char);
+    }
+
+    atualizarDisplay();
+    sleep_ms(100);
   }
 }
