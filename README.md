@@ -60,3 +60,7 @@ Todas as funcionalidades do projeto foram **implementadas com sucesso** e **todo
    cd DisplayBitDogLab
    ```
 
+## **Demonstração**
+
+Assista ao vídeo demonstrativo no seguinte link: [Vídeo da solução](https://youtu.be/MxY3-ohoIPw).
+
